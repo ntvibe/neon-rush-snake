@@ -90,6 +90,7 @@
         inset 0 0 40px rgba(111,247,255,.08),
         0 0 0 1px rgba(255,255,255,.05);
       transform-origin: center;
+      touch-action: none;
     }
 
     canvas {
@@ -169,9 +170,60 @@
       transform: translateY(0) scale(1);
     }
 
+    .touch-controls {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      width: 140px;
+      height: 140px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 8px;
+      z-index: 3;
+      pointer-events: none;
+      opacity: .74;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .touch-btn {
+      pointer-events: auto;
+      border: 1px solid rgba(159, 228, 255, .24);
+      border-radius: 12px;
+      background: rgba(6, 12, 28, .42);
+      color: rgba(222, 244, 255, .88);
+      font-size: 1.05rem;
+      font-weight: 700;
+      line-height: 1;
+      backdrop-filter: blur(6px);
+      box-shadow: inset 0 0 14px rgba(111,247,255,.08);
+      touch-action: manipulation;
+      transition: transform .08s ease, background .14s ease;
+    }
+
+    .touch-btn:active {
+      transform: scale(.96);
+      background: rgba(28, 51, 90, .52);
+    }
+
+    .touch-btn[data-dir="up"] { grid-column: 2; grid-row: 1; }
+    .touch-btn[data-dir="left"] { grid-column: 1; grid-row: 2; }
+    .touch-btn[data-dir="right"] { grid-column: 3; grid-row: 2; }
+    .touch-btn[data-dir="down"] { grid-column: 2; grid-row: 3; }
+
     @media (max-width: 640px) {
       .pill { font-size: .86rem; padding: 7px 12px; }
       .panel { padding: 16px; }
+      .touch-controls {
+        width: 124px;
+        height: 124px;
+        left: 10px;
+        bottom: 10px;
+        gap: 6px;
+        opacity: .82;
+      }
+      .touch-btn { font-size: .95rem; border-radius: 11px; }
     }
   </style>
 </head>
@@ -188,13 +240,19 @@
       <canvas id="game" width="780" height="780"></canvas>
       <div class="combo-pop" id="comboPop">COMBO BOOST!</div>
       <div class="flash" id="flash"></div>
+      <div class="touch-controls" id="touchControls" aria-label="Touch controls">
+        <button class="touch-btn" data-dir="up" aria-label="Up">▲</button>
+        <button class="touch-btn" data-dir="left" aria-label="Left">◀</button>
+        <button class="touch-btn" data-dir="right" aria-label="Right">▶</button>
+        <button class="touch-btn" data-dir="down" aria-label="Down">▼</button>
+      </div>
       <div class="overlay" id="overlay">
         <div class="panel">
           <h1>Neon Rush Snake</h1>
           <p>Eat glowing orbs. Chain quick pickups to build a score multiplier.</p>
           <p>Avoid walls and your trail. Each orb slightly increases speed.</p>
-          <p><strong>Press Space / Enter to Start</strong></p>
-          <p class="hint">Controls: Arrow Keys or WASD, P to pause.</p>
+          <p><strong>Tap / Click / Space / Enter to Start</strong></p>
+          <p class="hint">Controls: Swipe or D-pad, Arrow Keys or WASD, P to pause.</p>
         </div>
       </div>
     </div>
@@ -211,6 +269,7 @@
     const flash = document.getElementById("flash");
     const comboPop = document.getElementById("comboPop");
     const gameFrame = document.getElementById("gameFrame");
+    const touchControls = document.getElementById("touchControls");
 
     const GRID = 30;
     const CELL = canvas.width / GRID;
@@ -222,6 +281,9 @@
     let particles = [];
     let combo = 1;
     let lastEat = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let swipeTracking = false;
 
     const getBest = () => Number(localStorage.getItem("neonRushBest") || 0);
     const setBest = (value) => localStorage.setItem("neonRushBest", String(value));
@@ -284,7 +346,7 @@
           <h1>Crash!</h1>
           <p>Score: <strong>${score}</strong></p>
           <p>Best: <strong>${Math.max(best, score)}</strong></p>
-          <p><strong>Press Space / Enter to Play Again</strong></p>
+          <p><strong>Tap / Click / Space / Enter to Play Again</strong></p>
           <p class="hint">Tip: Keep chains alive by eating within 2.5 seconds.</p>
         </div>
       `;
@@ -559,6 +621,50 @@
       if (k === "arrowright" || k === "d") setDir(1, 0);
 
       if (k === "p") paused = !paused;
+    });
+
+    function handleTouchDir(dirName) {
+      if (!running || paused) return;
+      if (dirName === "up") setDir(0, -1);
+      if (dirName === "down") setDir(0, 1);
+      if (dirName === "left") setDir(-1, 0);
+      if (dirName === "right") setDir(1, 0);
+    }
+
+    overlay.addEventListener("pointerdown", () => {
+      if (!running) startGame();
+    });
+
+    gameFrame.addEventListener("touchstart", (e) => {
+      if (!running) {
+        startGame();
+        return;
+      }
+      if (e.target.closest(".touch-btn")) return;
+      const t = e.changedTouches[0];
+      touchStartX = t.clientX;
+      touchStartY = t.clientY;
+      swipeTracking = true;
+    }, { passive: true });
+
+    gameFrame.addEventListener("touchend", (e) => {
+      if (!swipeTracking || !running || paused) return;
+      const t = e.changedTouches[0];
+      const dx = t.clientX - touchStartX;
+      const dy = t.clientY - touchStartY;
+      swipeTracking = false;
+      const threshold = 20;
+      if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return;
+      if (Math.abs(dx) > Math.abs(dy)) handleTouchDir(dx > 0 ? "right" : "left");
+      else handleTouchDir(dy > 0 ? "down" : "up");
+    }, { passive: true });
+
+    touchControls.addEventListener("pointerdown", (e) => {
+      const button = e.target.closest(".touch-btn");
+      if (!button) return;
+      e.preventDefault();
+      const direction = button.dataset.dir;
+      if (direction) handleTouchDir(direction);
     });
 
     resetGame();
