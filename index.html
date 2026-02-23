@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neon Rush Snake</title>
+  <style>
+    :root {
+      --bg-1: #05070f;
+      --bg-2: #101a3a;
+      --cyan: #6ff7ff;
+      --pink: #ff5fd1;
+      --lime: #a9ff68;
+      --gold: #ffd86b;
+      --danger: #ff5f6f;
+      --text: #e8f2ff;
+      --panel: rgba(14, 19, 42, 0.72);
+      --grid-cell: 26px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: "Trebuchet MS", "Avenir Next", "Segoe UI", sans-serif;
+      color: var(--text);
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 10%, #1f2f66 0%, transparent 45%),
+        radial-gradient(circle at 80% 80%, #3e1358 0%, transparent 40%),
+        linear-gradient(140deg, var(--bg-1), #070d1e 35%, var(--bg-2));
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -20%;
+      background:
+        conic-gradient(from 0deg, rgba(111,247,255,.08), rgba(255,95,209,.08), rgba(169,255,104,.07), rgba(111,247,255,.08));
+      filter: blur(40px);
+      animation: pulse 8s linear infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    @keyframes pulse {
+      to { transform: rotate(360deg) scale(1.06); }
+    }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .hud {
+      width: min(92vw, 820px);
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      background: var(--panel);
+      border: 1px solid rgba(120, 200, 255, .25);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-weight: 700;
+      letter-spacing: .4px;
+      box-shadow: inset 0 0 18px rgba(111, 247, 255, .08), 0 4px 20px rgba(0, 0, 0, .25);
+      backdrop-filter: blur(8px);
+      text-shadow: 0 0 10px rgba(111,247,255,.35);
+    }
+
+    .game-frame {
+      position: relative;
+      width: min(92vw, 820px);
+      aspect-ratio: 1 / 1;
+      border-radius: 22px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.12);
+      box-shadow:
+        0 16px 45px rgba(0,0,0,.45),
+        inset 0 0 40px rgba(111,247,255,.08),
+        0 0 0 1px rgba(255,255,255,.05);
+      transform-origin: center;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background:
+        linear-gradient(180deg, rgba(9,13,29,.92), rgba(7,11,25,.98));
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 20px;
+      background: linear-gradient(180deg, rgba(5,8,20,.55), rgba(4,6,15,.78));
+      transition: opacity .25s ease;
+    }
+
+    .panel {
+      max-width: 560px;
+      background: rgba(12,17,40,.72);
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      padding: 20px 22px;
+      box-shadow: inset 0 0 24px rgba(255,255,255,.05), 0 10px 35px rgba(0,0,0,.45);
+      backdrop-filter: blur(8px);
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(1.4rem, 2.3vw, 2.3rem);
+      letter-spacing: .7px;
+      text-shadow: 0 0 14px rgba(255,95,209,.5), 0 0 24px rgba(111,247,255,.35);
+    }
+
+    p {
+      margin: 7px 0;
+      opacity: .95;
+      line-height: 1.35;
+    }
+
+    .hint {
+      font-size: .92rem;
+      opacity: .82;
+      margin-top: 14px;
+    }
+
+    .flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(circle, rgba(255,255,255,.35), rgba(255,255,255,0) 55%);
+      opacity: 0;
+    }
+
+    .combo-pop {
+      position: absolute;
+      right: 16px;
+      top: 16px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-weight: 800;
+      color: #061021;
+      background: linear-gradient(135deg, var(--gold), #ff9f54);
+      box-shadow: 0 10px 26px rgba(255, 175, 68, .34);
+      opacity: 0;
+      transform: translateY(-6px) scale(.94);
+      transition: .22s ease;
+      pointer-events: none;
+    }
+
+    .combo-pop.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    @media (max-width: 640px) {
+      .pill { font-size: .86rem; padding: 7px 12px; }
+      .panel { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hud">
+      <div class="pill">Score: <span id="score">0</span></div>
+      <div class="pill">Best: <span id="best">0</span></div>
+      <div class="pill">Combo x<span id="combo">1.0</span></div>
+      <div class="pill">Speed: <span id="speed">1</span></div>
+    </div>
+
+    <div class="game-frame" id="gameFrame">
+      <canvas id="game" width="780" height="780"></canvas>
+      <div class="combo-pop" id="comboPop">COMBO BOOST!</div>
+      <div class="flash" id="flash"></div>
+      <div class="overlay" id="overlay">
+        <div class="panel">
+          <h1>Neon Rush Snake</h1>
+          <p>Eat glowing orbs. Chain quick pickups to build a score multiplier.</p>
+          <p>Avoid walls and your trail. Each orb slightly increases speed.</p>
+          <p><strong>Press Space / Enter to Start</strong></p>
+          <p class="hint">Controls: Arrow Keys or WASD, P to pause.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+    const overlay = document.getElementById("overlay");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const comboEl = document.getElementById("combo");
+    const speedEl = document.getElementById("speed");
+    const flash = document.getElementById("flash");
+    const comboPop = document.getElementById("comboPop");
+    const gameFrame = document.getElementById("gameFrame");
+
+    const GRID = 30;
+    const CELL = canvas.width / GRID;
+
+    let snake, dir, pendingDir, food, score, speed, running, paused, best;
+    let lastTime = 0;
+    let accumulator = 0;
+    let stepMs = 130;
+    let particles = [];
+    let combo = 1;
+    let lastEat = 0;
+
+    const getBest = () => Number(localStorage.getItem("neonRushBest") || 0);
+    const setBest = (value) => localStorage.setItem("neonRushBest", String(value));
+
+    function resetGame() {
+      snake = [
+        { x: 12, y: 15 },
+        { x: 11, y: 15 },
+        { x: 10, y: 15 }
+      ];
+      dir = { x: 1, y: 0 };
+      pendingDir = { ...dir };
+      placeFood();
+      score = 0;
+      speed = 1;
+      combo = 1;
+      stepMs = 130;
+      accumulator = 0;
+      particles = [];
+      paused = false;
+      scoreEl.textContent = "0";
+      comboEl.textContent = "1.0";
+      speedEl.textContent = "1";
+      best = getBest();
+      bestEl.textContent = String(best);
+    }
+
+    function placeFood() {
+      let ok = false;
+      while (!ok) {
+        food = {
+          x: Math.floor(Math.random() * GRID),
+          y: Math.floor(Math.random() * GRID)
+        };
+        ok = !snake?.some(part => part.x === food.x && part.y === food.y);
+      }
+    }
+
+    function isOpposite(a, b) {
+      return a.x === -b.x && a.y === -b.y;
+    }
+
+    function setDir(nx, ny) {
+      const next = { x: nx, y: ny };
+      if (!isOpposite(next, dir)) pendingDir = next;
+    }
+
+    function startGame() {
+      resetGame();
+      running = true;
+      overlay.style.opacity = "0";
+      overlay.style.pointerEvents = "none";
+      requestAnimationFrame(loop);
+    }
+
+    function endGame() {
+      running = false;
+      overlay.innerHTML = `
+        <div class="panel">
+          <h1>Crash!</h1>
+          <p>Score: <strong>${score}</strong></p>
+          <p>Best: <strong>${Math.max(best, score)}</strong></p>
+          <p><strong>Press Space / Enter to Play Again</strong></p>
+          <p class="hint">Tip: Keep chains alive by eating within 2.5 seconds.</p>
+        </div>
+      `;
+      overlay.style.opacity = "1";
+      overlay.style.pointerEvents = "auto";
+    }
+
+    function triggerFlash(color = "rgba(255,255,255,.42)") {
+      flash.style.background = `radial-gradient(circle, ${color}, rgba(255,255,255,0) 55%)`;
+      flash.animate(
+        [
+          { opacity: 0 },
+          { opacity: .82, offset: .25 },
+          { opacity: 0 }
+        ],
+        { duration: 250, easing: "ease-out" }
+      );
+    }
+
+    function triggerComboPop(mult) {
+      comboPop.textContent = `COMBO x${mult.toFixed(1)}`;
+      comboPop.classList.add("show");
+      clearTimeout(triggerComboPop.t);
+      triggerComboPop.t = setTimeout(() => comboPop.classList.remove("show"), 300);
+    }
+
+    function shake(intensity = 8) {
+      gameFrame.animate([
+        { transform: "translate(0,0)" },
+        { transform: `translate(${(Math.random()-.5)*intensity}px, ${(Math.random()-.5)*intensity}px)` },
+        { transform: "translate(0,0)" }
+      ], { duration: 130, easing: "ease-out" });
+    }
+
+    function spawnParticles(x, y, color, count = 18) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x,
+          y,
+          vx: (Math.random() - 0.5) * 3.6,
+          vy: (Math.random() - 0.5) * 3.6,
+          life: 1,
+          decay: 0.02 + Math.random() * 0.025,
+          size: 2 + Math.random() * 3,
+          color
+        });
+      }
+    }
+
+    function step() {
+      if (!running || paused) return;
+
+      dir = { ...pendingDir };
+      const head = snake[0];
+      const next = { x: head.x + dir.x, y: head.y + dir.y };
+
+      if (
+        next.x < 0 || next.y < 0 || next.x >= GRID || next.y >= GRID ||
+        snake.some(part => part.x === next.x && part.y === next.y)
+      ) {
+        triggerFlash("rgba(255,95,111,.55)");
+        shake(14);
+        spawnParticles((head.x + .5) * CELL, (head.y + .5) * CELL, "#ff5f6f", 32);
+        endGame();
+        return;
+      }
+
+      snake.unshift(next);
+
+      if (next.x === food.x && next.y === food.y) {
+        const now = performance.now();
+        const fastChain = now - lastEat < 2500;
+        combo = fastChain ? Math.min(combo + 0.25, 5) : 1.25;
+        lastEat = now;
+
+        const gain = Math.floor(10 * combo);
+        score += gain;
+        scoreEl.textContent = String(score);
+        comboEl.textContent = combo.toFixed(1);
+
+        if (combo >= 2) triggerComboPop(combo);
+
+        if (score > best) {
+          best = score;
+          bestEl.textContent = String(best);
+          setBest(best);
+        }
+
+        speed = Math.min(1 + Math.floor(snake.length / 4), 12);
+        stepMs = Math.max(48, 130 - speed * 6 - combo * 3);
+        speedEl.textContent = String(speed);
+
+        triggerFlash("rgba(111,247,255,.45)");
+        spawnParticles((food.x + .5) * CELL, (food.y + .5) * CELL, "#6ff7ff", 22);
+        placeFood();
+      } else {
+        snake.pop();
+        combo = Math.max(1, combo - 0.015);
+        comboEl.textContent = combo.toFixed(1);
+      }
+    }
+
+    function drawGrid() {
+      ctx.save();
+      ctx.strokeStyle = "rgba(120, 165, 255, .11)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= GRID; i++) {
+        const p = i * CELL;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(canvas.width, p);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawSnake() {
+      for (let i = snake.length - 1; i >= 0; i--) {
+        const s = snake[i];
+        const t = i / snake.length;
+        const x = s.x * CELL;
+        const y = s.y * CELL;
+        const hue = 180 + t * 140;
+
+        ctx.save();
+        ctx.shadowColor = `hsla(${hue}, 95%, 68%, .9)`;
+        ctx.shadowBlur = 14;
+        ctx.fillStyle = `hsla(${hue}, 92%, ${55 - t * 10}%, .95)`;
+        roundRect(ctx, x + 2, y + 2, CELL - 4, CELL - 4, 8);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      const head = snake[0];
+      const hx = head.x * CELL + CELL / 2;
+      const hy = head.y * CELL + CELL / 2;
+      ctx.save();
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#6ff7ff";
+      ctx.shadowBlur = 18;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 3.4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawFood(time) {
+      const fx = food.x * CELL + CELL / 2;
+      const fy = food.y * CELL + CELL / 2;
+      const pulse = 1 + Math.sin(time * 0.009) * 0.16;
+
+      ctx.save();
+      ctx.translate(fx, fy);
+      ctx.scale(pulse, pulse);
+      ctx.shadowColor = "#ff5fd1";
+      ctx.shadowBlur = 25;
+      ctx.fillStyle = "#ff5fd1";
+      star(ctx, 0, 0, 5, 10, 5);
+      ctx.fill();
+
+      ctx.shadowBlur = 14;
+      ctx.fillStyle = "#fff2a6";
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawParticles() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= p.decay;
+
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.fillStyle = p.color;
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function render(time) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+      drawFood(time);
+      drawSnake();
+      drawParticles();
+
+      if (paused && running) {
+        ctx.save();
+        ctx.fillStyle = "rgba(3,7,18,.55)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#d6ecff";
+        ctx.font = "700 48px Trebuchet MS";
+        ctx.textAlign = "center";
+        ctx.fillText("PAUSED", canvas.width / 2, canvas.height / 2);
+        ctx.restore();
+      }
+    }
+
+    function loop(timestamp) {
+      if (!running) {
+        render(timestamp);
+        return;
+      }
+
+      if (!lastTime) lastTime = timestamp;
+      const delta = timestamp - lastTime;
+      lastTime = timestamp;
+      accumulator += delta;
+
+      while (accumulator >= stepMs) {
+        step();
+        accumulator -= stepMs;
+      }
+
+      render(timestamp);
+      requestAnimationFrame(loop);
+    }
+
+    function roundRect(c, x, y, w, h, r) {
+      c.beginPath();
+      c.moveTo(x + r, y);
+      c.arcTo(x + w, y, x + w, y + h, r);
+      c.arcTo(x + w, y + h, x, y + h, r);
+      c.arcTo(x, y + h, x, y, r);
+      c.arcTo(x, y, x + w, y, r);
+      c.closePath();
+    }
+
+    function star(c, x, y, points, outer, inner) {
+      c.beginPath();
+      for (let i = 0; i < points * 2; i++) {
+        const ang = (Math.PI * i) / points - Math.PI / 2;
+        const rad = i % 2 === 0 ? outer : inner;
+        const px = x + Math.cos(ang) * rad;
+        const py = y + Math.sin(ang) * rad;
+        if (i === 0) c.moveTo(px, py);
+        else c.lineTo(px, py);
+      }
+      c.closePath();
+    }
+
+    addEventListener("keydown", (e) => {
+      const k = e.key.toLowerCase();
+
+      if ((k === " " || k === "enter") && !running) {
+        startGame();
+        return;
+      }
+
+      if (!running) return;
+
+      if (k === "arrowup" || k === "w") setDir(0, -1);
+      if (k === "arrowdown" || k === "s") setDir(0, 1);
+      if (k === "arrowleft" || k === "a") setDir(-1, 0);
+      if (k === "arrowright" || k === "d") setDir(1, 0);
+
+      if (k === "p") paused = !paused;
+    });
+
+    resetGame();
+    render(0);
+  </script>
+</body>
+</html>
